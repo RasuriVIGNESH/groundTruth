@@ -5,17 +5,15 @@ import com.vig.GroundTruth.entity.Projection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface ProjectionRepository extends JpaRepository<Projection, UUID> {
+    Optional<Projection> findTopByRegion_IdAndHorizonMonthsOrderByCalculatedDateDesc(UUID regionId, Integer horizonMonths);
 
-    /**
-     * Explanation trail: articles tied to this projection, enriched with
-     * projectType/impactMagnitude from ImpactScore (article+region pair).
-     * Single query, no loop.
-     */
+    Optional<Projection> findTopByRegion_IdOrderByCalculatedDateDesc(UUID regionId);
+
     @Query("""
         SELECT new com.vig.GroundTruth.dto.ContributingArticleResponse(
             a.id, a.title, a.source, a.url, a.publishedDate, isc.projectType, isc.impactMagnitude

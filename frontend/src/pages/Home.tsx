@@ -43,6 +43,7 @@ export default function Home() {
   const [regions, setRegions] = useState<Region[]>([]);
   const [geometries, setGeometries] = useState<DbGeometryRegion[]>([]);
   const [infrastructures, setInfrastructures] = useState<InfrastructureRecord[]>([]);
+  const [isInfrastructureLoading, setIsInfrastructureLoading] = useState(false);
   const [evidence, setEvidence] = useState<EvidenceRecord[]>([]);
 
   const [officialValueUrl, setOfficialValueUrl] = useState("");
@@ -81,12 +82,14 @@ export default function Home() {
       setRegions([]);
       setGeometries([]);
       setInfrastructures([]);
+      setIsInfrastructureLoading(false);
       setIsLoading(false);
       return;
     }
     let cancelled = false;
     setIsLoading(true);
-    Promise.allSettled([getGroundTruthSnapshot(selectedState), getRegionGeometries(selectedState), getInfrastructureRecords(selectedState)]).then(([snapshotResult, geometryResult, infrastructureResult]) => {
+    setIsInfrastructureLoading(false);
+    Promise.allSettled([getGroundTruthSnapshot(selectedState), getRegionGeometries(selectedState)]).then(([snapshotResult, geometryResult]) => {
       if (cancelled) return;
       if (snapshotResult.status === "fulfilled") {
         setRegions(snapshotResult.value.regions);
@@ -98,7 +101,8 @@ export default function Home() {
         setOfficialValueUrl("https://bhubharati.telangana.gov.in/viewMarketValueLandStampDuty");
       }
       setGeometries(geometryResult.status === "fulfilled" ? geometryResult.value : []);
-      setInfrastructures(infrastructureResult.status === "fulfilled" ? infrastructureResult.value : []);
+      setInfrastructures([]);
+      setIsInfrastructureLoading(false);
       setIsLoading(false);
     });
     return () => { cancelled = true; };
@@ -113,6 +117,7 @@ export default function Home() {
   const selected = selectedId ? regions.find((r) => r.id === selectedId) : undefined;
   const range = selected ? changeRange(selected) : null;
   const selectedDrivers = selected?.drivers.filter((d) => activeTypes.includes(d.type)) ?? [];
+  const selectedInfrastructure = selectedId ? infrastructures : [];
   useEffect(() => {
     if (selected) {
       setPropertyValue(String(selected.value));
@@ -125,6 +130,19 @@ export default function Home() {
   useEffect(() => {
     if (!selectedId) { setEvidence([]); return; }
     getEvidence(selectedId).then(setEvidence).catch(() => setEvidence([]));
+  }, [selectedId]);
+  useEffect(() => {
+    if (!selectedId) { setInfrastructures([]); setIsInfrastructureLoading(false); return; }
+    let cancelled = false;
+    setIsInfrastructureLoading(true);
+    getInfrastructureRecords(selectedId).then((records) => {
+      if (!cancelled) setInfrastructures(records);
+    }).catch(() => {
+      if (!cancelled) setInfrastructures([]);
+    }).finally(() => {
+      if (!cancelled) setIsInfrastructureLoading(false);
+    });
+    return () => { cancelled = true; };
   }, [selectedId]);
   const detailOpen = Boolean(selected && mobilePanel);
 
@@ -164,7 +182,7 @@ export default function Home() {
               <div className="map-paper-grain" />
               <div className="map-grid" />
               <div className="route route-a" /><div className="route route-b" /><div className="route route-c" />
-              <ExactRegionMap geometries={selectedState ? geometries : []} regions={selectedState ? regions : []} infrastructures={infrastructures} activeTypes={activeTypes} showProjects={showProjects} selectedId={selectedId} onSelect={(regionId) => { setSelectedId(regionId); setMobilePanel(true); }} />
+              <ExactRegionMap geometries={selectedState ? geometries : []} regions={selectedState ? regions : []} infrastructures={selectedId ? infrastructures : []} activeTypes={activeTypes} showProjects={showProjects} selectedId={selectedId} onSelect={(regionId) => { setSelectedId(regionId); setMobilePanel(true); }} />
               {selectedState && !isLoading && !regions.length && <div className="map-empty-state">No region records are available for this state yet.</div>}
               <div className="map-scale"><span>0</span><i /><span>50 km</span></div><div className="map-compass"><span>N</span><Navigation size={19} /></div>
               <div className="map-stamp"><ShieldCheck size={14} /> PUBLIC SOURCES ONLY</div>
@@ -178,8 +196,15 @@ export default function Home() {
             {selected ? <>
               <div className="record-top"><span className="record-label">REGION RECORD / 0{regions.findIndex((r) => r.id === selected.id) + 1}</span></div>
               <div className="region-title"><h2>{selected.name}</h2><p>{selected.district} district <span>·</span> {selected.state || selectedState}</p></div>
-              <div className="value-block"><div className="value-meta"><span>APPROX. CURRENT VALUE</span><span className="data-date">Base value · Jan 2026</span></div><div className="value-number">{formatINR(selected.value)}<small>/{selected.unit.replace("per ", "")}</small></div><a className="official-link" href={officialValueUrl} target="_blank" rel="noreferrer"><Landmark size={15} /> Check official government market value <ExternalLink size={13} /></a><form className="prediction-form" onSubmit={(event) => { event.preventDefault(); void runPrediction(); }}><div className="prediction-form-heading"><span>YOUR PROPERTY SCENARIO</span><small>Compare a personal input with the regional signal</small></div><label>Current property value<input inputMode="numeric" type="number" min="1" placeholder="e.g. 5200000" value={propertyValue} onChange={(event) => { setPropertyValue(event.target.value); setPrediction(null); }} /></label><label>Property type<select value={propertyType} onChange={(event) => { setPropertyType(event.target.value); setPrediction(null); }}><option>Plot</option><option>Apartment</option><option>Independent house</option><option>Commercial</option></select></label><label>Prediction horizon<select value={horizonMonths} onChange={(event) => { setHorizonMonths(Number(event.target.value)); setPrediction(null); }}><option value={6}>6 months</option><option value={12}>1 year</option><option value={24}>2 years</option><option value={36}>3 years</option><option value={48}>4 years</option><option value={60}>5 years</option></select></label><button className="predict-button" type="submit" disabled={!propertyValue || isPredicting}>{isPredicting ? "Calculating signal…" : "Predict future price"}<ArrowUpRight size={14} /></button>{prediction && <div className="prediction-result"><div><span>ESTIMATED RANGE · {prediction.horizonMonths === 60 ? "5 YEARS" : `${prediction.horizonMonths} MONTHS`}</span><strong>{formatINR(prediction.low)} — {formatINR(prediction.high)}</strong></div><p>{prediction.methodology}</p></div>}</form></div>
+              <div className="value-block"><div className="value-meta"><span>APPROX. CURRENT VALUE</span><span className="data-date">Base value · Jan 2026</span></div><div className="value-number">{formatINR(selected.value)}<small>/{selected.unit.replace("per ", "")}</small></div><a className="official-link" href={officialValueUrl} target="_blank" rel="noreferrer"><Landmark size={15} /> Check official government market value <ExternalLink size={13} /></a><form className="prediction-form" onSubmit={(event) => { event.preventDefault(); void runPrediction(); }}><div className="prediction-form-heading"><span>YOUR PROPERTY SCENARIO</span><small>Compare a personal input with the regional signal</small></div><label>Current property value<input inputMode="numeric" type="number" min="1" placeholder="e.g. 5200000" value={propertyValue} onChange={(event) => { setPropertyValue(event.target.value); setPrediction(null); }} /></label><label>Property type<select value={propertyType} onChange={(event) => { setPropertyType(event.target.value); setPrediction(null); }}><option>Plot</option><option>Apartment</option><option>Independent house</option><option>Commercial</option></select></label><label>Prediction horizon<select value={horizonMonths} onChange={(event) => { setHorizonMonths(Number(event.target.value)); setPrediction(null); }}><option value={12}>1 year</option><option value={24}>2 years</option><option value={36}>3 years</option></select></label><button className="predict-button" type="submit" disabled={!propertyValue || isPredicting}>{isPredicting ? "Calculating signal…" : "Predict future price"}<ArrowUpRight size={14} /></button>{prediction && <div className="prediction-result"><div><span>ESTIMATED RANGE · `${prediction.horizonMonths} MONTHS`</span><strong>{formatINR(prediction.low)} — {formatINR(prediction.high)}</strong></div><p>{prediction.methodology}</p></div>}</form></div>
               <div className="projection-block"><div className="value-meta"><span>GROUND TRUTH PROJECTION</span><span className={`confidence-badge ${selected.confidence ? "" : "low"}`}>{selected.confidence ? `${Math.round(selected.confidence * 100)}% confidence` : "No estimate"}</span></div>{selected.projected ? <><div className="projection-number"><span>{formatINR(selected.projected[0])}</span><i>—</i><span>{formatINR(selected.projected[1])}</span></div><div className={`change-pill ${selected.direction}`}><ArrowUpRight size={15} /> {range ? `${range[0].toFixed(1)}–${range[1].toFixed(1)}%` : ""} projected change</div></> : <div className="no-projection"><Minus size={16} /> No recent development signal is strong enough to publish a range.</div>}</div>
+              <section className="development-signals" aria-labelledby="development-signals-title">
+                <div className="section-heading-row">
+                  <div><span className="section-kicker">SELECTED REGION / DEVELOPMENT SIGNALS</span><h3 id="development-signals-title">What is changing the ground</h3></div>
+                  <span className="section-count">{isInfrastructureLoading ? "…" : selectedInfrastructure.length}</span>
+                </div>
+                {isInfrastructureLoading ? <div className="development-state"><span className="loading-pulse" />Reading mapped projects for {selected.name}…</div> : selectedInfrastructure.length ? <div className="development-list">{selectedInfrastructure.map((project) => <article className="development-card" key={project.id}><div className="development-card-top"><span className="development-type">{project.type}</span><span className="development-status">{project.status}</span></div><h4>{project.name}</h4><p>{project.summary || "A mapped public-development signal associated with this region."}</p><div className="development-metrics"><span><small>EST. IMPACT</small><strong>{project.contribution[0] > 0 ? "+" : ""}{project.contribution[0]}–{project.contribution[1]} pp</strong></span><span><small>CONFIDENCE</small><strong>{Math.round(project.confidence * 100)}%</strong></span><span><small>EXPECTED</small><strong>{project.openingYear ?? "—"}</strong></span></div>{project.sourceUrl && <a className="development-source" href={project.sourceUrl} target="_blank" rel="noreferrer">View public source <ExternalLink size={12} /></a>}</article>)}</div> : <div className="development-state quiet"><Building2 size={17} /><span>No mapped infrastructure signal is currently available for this region.</span></div>}
+              </section>
               <div className="tab-bar"><button className={activeTab === "drivers" ? "active" : ""} onClick={() => setActiveTab("drivers")}>What moves it <span>{selectedDrivers.length}</span></button><button className={activeTab === "evidence" ? "active" : ""} onClick={() => setActiveTab("evidence")}>Evidence trail <span>{evidence.length}</span></button></div>
               {activeTab === "drivers" ? <div className="drivers-list">{selectedDrivers.length ? selectedDrivers.map((driver, index) => <article className="driver-card" key={driver.id}><div className="driver-image"><img src={driver.image} alt={`${driver.name} reference`} /><span className="driver-index">0{index + 1}</span><span className="driver-type">{iconFor(driver.type)} {driver.type}</span></div><div className="driver-content"><div className="driver-heading"><h3>{driver.name}</h3><span className="driver-status">{driver.status}</span></div><p>{driver.summary}</p><div className="driver-metrics"><div><span>EST. CONTRIBUTION</span><strong className={driver.contribution[0] < 0 ? "negative" : ""}>{driver.contribution[0] > 0 ? "+" : ""}{driver.contribution[0]}–{driver.contribution[1]}<small> pp</small></strong></div><div><span>TIME HORIZON</span><strong>{driver.timeline}</strong></div></div><button className="evidence-button" onClick={() => setActiveTab("evidence")}>Read {driver.sourceCount} source{driver.sourceCount > 1 ? "s" : ""} <ChevronRight size={14} /></button></div></article>) : <div className="empty-note"><FileText size={22} /><strong>Quiet ground, for now.</strong><span>No infrastructure driver has enough evidence to publish for this region.</span></div>}</div> : <div className="evidence-list">{evidence.map((item) => <article className="evidence-item" key={item.id}><div className="evidence-marker"><Newspaper size={13} /></div><div><div className="evidence-source">{item.publisher}<span>· {item.publishedAt}</span></div><h3>{item.title}</h3>{item.url && <a href={item.url} target="_blank" rel="noreferrer">Open source <ExternalLink size={12} /></a>}</div></article>)}</div>}
               <div className="rail-disclaimer"><ShieldCheck size={15} /><span>Estimate based on public news reports, not financial advice. Verify any decision with a licensed valuer.</span></div>

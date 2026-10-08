@@ -1,18 +1,13 @@
 package com.vig.GroundTruth.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-
+import lombok.*;
+import org.hibernate.annotations.UuidGenerator;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-import org.hibernate.annotations.UuidGenerator;
 
 @Getter
 @Setter
@@ -20,15 +15,10 @@ import org.hibernate.annotations.UuidGenerator;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(
-        name = "projection",
-        indexes = {
-                @Index(name = "idx_projection_region_id", columnList = "region_id"),
-                @Index(name = "idx_projection_calculated_date", columnList = "calculated_date")
-        }
-)
+@Table(name = "projection", indexes = {
+        @Index(name = "idx_projection_region_horizon_date", columnList = "region_id,horizon_months,calculated_date")
+})
 public class Projection extends BaseEntity {
-
     @Id
     @UuidGenerator
     @Column(name = "id", updatable = false, nullable = false)
@@ -50,21 +40,18 @@ public class Projection extends BaseEntity {
     @Column(name = "calculated_date", nullable = false)
     private Instant calculatedDate;
 
-    /**
-     * Join table modeled as @ManyToMany since ProjectionContributingArticle
-     * has no columns beyond the two FKs (per 04_DATABASE_SCHEMA.md).
-     * LAZY by default for @ManyToMany — never touch unless explanation trail is needed.
-     */
+    @Column(name = "horizon_months", nullable = false)
+    @Builder.Default
+    private Integer horizonMonths = 24;
+
     @Builder.Default
     @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-            name = "projection_contributing_article",
+    @JoinTable(name = "projection_contributing_article",
             joinColumns = @JoinColumn(name = "projection_id", foreignKey = @ForeignKey(name = "fk_pca_projection")),
-            inverseJoinColumns = @JoinColumn(name = "article_id", foreignKey = @ForeignKey(name = "fk_pca_article"))
-    )
+            inverseJoinColumns = @JoinColumn(name = "article_id", foreignKey = @ForeignKey(name = "fk_pca_article")))
     private Set<NewsArticle> contributingArticles = new HashSet<>();
 
     @Version
-    @Column(name = "version", nullable = false)
+    @Column(nullable = false)
     private Long version;
 }
