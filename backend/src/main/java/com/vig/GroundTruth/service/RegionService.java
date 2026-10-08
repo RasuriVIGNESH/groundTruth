@@ -40,9 +40,22 @@ public class RegionService {
 
         return mapToDetailResponse(row);
     }
+    public List<String> getAvailableStates() {
+        return regionRepository.findAvailableStates();
+    }
+
     public List<RegionSummaryResponse> getRegions(String state, String district, BigDecimal minConfidence) {
-        return regionRepository.findRegionSummaries(state, district, minConfidence).stream()
-                .map(row -> new RegionSummaryResponse(
+        List<RegionSummaryRow> rows;
+        if (state != null && !state.isBlank()) {
+            rows = regionRepository.findRegionSummariesByState(state.trim());
+        } else if (district != null && !district.isBlank()) {
+            rows = regionRepository.findRegionSummariesByDistrict(district.trim());
+        } else if (minConfidence != null) {
+            rows = regionRepository.findRegionSummariesByMinConfidence(minConfidence);
+        } else {
+            rows = regionRepository.findRegionSummaries();
+        }
+        return rows.stream().map(row -> new RegionSummaryResponse(
                         row.id(), row.name(), row.mandal(), row.district(), row.state(),
                         geometryMapper.toGeoJson(row.geometry()),
                         row.baseValue(), row.baseValueUnit(),

@@ -11,7 +11,7 @@ import jakarta.validation.constraints.DecimalMin;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
+
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +28,12 @@ public class RegionController {
     private final RegionService regionService;
 
 
+    @Operation(summary = "Available states with region records")
+    @GetMapping("/states")
+    public List<String> getAvailableStates() {
+        return regionService.getAvailableStates();
+    }
+
     @Operation(summary = "Full detail for one region, including geometry and latest projection")
     @GetMapping("/{id}")
     public RegionDetailResponse getRegionById(@PathVariable UUID id) {
@@ -42,7 +48,7 @@ public class RegionController {
             @RequestParam(defaultValue = "20") int size
     ) {
         Page<RegionNewsResponse> result = regionService.getRegionNews(
-                id, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "publishedDate"))
+                id, PageRequest.of(page, size)
         );
         return result.getContent();
     }
